@@ -3,6 +3,8 @@ extends EditorPlugin
 
 const Colors = ALibEditor.Colors
 
+const DOT = "\u2022"
+const SETTING_CHECK_ON_START = &"plugin/gdaddon/check_on_start"
 const GDADDON_REPO = "https://github.com/brohd11/gdaddon"
 
 enum OSType {
@@ -11,6 +13,8 @@ enum OSType {
 	MAC,
 	WINDOWS,
 }
+
+var check_on_start:bool = false
 
 var dialog:Window
 
@@ -48,6 +52,13 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	remove_tool_menu_item("gdaddon")
+
+func _on_editor_settings_changed():
+	var ed_settings = EditorInterface.get_editor_settings()
+	if not ed_settings.has_setting(SETTING_CHECK_ON_START):
+		ed_settings.set_setting(SETTING_CHECK_ON_START, true)
+	check_on_start = ed_settings.get_setting(SETTING_CHECK_ON_START)
+
 
 func _open_gdaddon() -> void:
 	if is_instance_valid(dialog):
@@ -250,9 +261,14 @@ class AddonListItem extends PanelContainer:
 	var main_vbox:VBoxContainer
 	var addon_path:String
 	
-	var addon_label:Label
+	var top_label:Label
+	
 	var alert_icon:TextureRect
 	var status_label:Label
+	
+	var middle_label:Label
+	var lock_icon:TextureRect
+	var lock_label:Label
 	
 	var bottom_label:Label
 	var terminal_button:Button
@@ -266,8 +282,10 @@ class AddonListItem extends PanelContainer:
 		
 		var top_hbox = HBoxContainer.new()
 		main_vbox.add_child(top_hbox)
-		addon_label = Label.new()
-		top_hbox.add_child(addon_label)
+		top_label = Label.new()
+		top_hbox.add_child(top_label)
+		
+		
 		
 		alert_icon = TextureRect.new()
 		alert_icon.texture = Utils.get_icon("NodeWarning")
@@ -279,6 +297,27 @@ class AddonListItem extends PanelContainer:
 		status_label = Label.new()
 		top_hbox.add_child(status_label)
 		status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		
+		
+		var middle_hbox:= HBoxContainer.new()
+		main_vbox.add_child(middle_hbox)
+		
+		middle_label = Label.new()
+		middle_hbox.add_child(middle_label)
+		#middle_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		
+		lock_icon = TextureRect.new()
+		middle_hbox.add_child(lock_icon)
+		lock_icon.hide()
+		lock_icon.texture = Utils.get_icon("Lock")
+		lock_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		
+		lock_label = Label.new()
+		lock_label.text = "locked"
+		middle_hbox.add_child(lock_label)
+		lock_label.hide()
+		
+		middle_hbox.add_spacer(false)
 		
 		var bottom_hbox:HBoxContainer = HBoxContainer.new()
 		main_vbox.add_child(bottom_hbox)
@@ -315,21 +354,37 @@ class AddonListItem extends PanelContainer:
 		addon_path = data.get("path")
 		
 		var tag = data.get("tag")
-		#var local_version = data.get("local_version")
-		#var pinned_version = data.get("pinned_version")
+		
 		
 		var kind = data.get("kind")
 		var state = data.get("state")
 		
-		var top_text = addon_name
-		if kind == "package":
-			top_text += " \u2022 " + state
-		elif kind == "clone":
-			top_text += " \u2022 " + "Cloned (%s)" % tag
-		elif kind == "submodule":
-			top_text += " \u2022 " + "Submodule (%s)" % tag
+		var locked = data.get("lock", false)
+		lock_icon.visible = locked
+		lock_label.visible = locked
+		var local_version = data.get("local_version")
+		var pinned_version = data.get("pinned_version")
 		
-		addon_label.text = top_text
+		var top_text = addon_name
+		var middle_text = ""
+		if kind == "package":
+			top_text += " %s Package" % DOT
+			middle_text = state
+			if local_version == "" or state == "missing" or local_version != pinned_version:
+				middle_text += " %s Target: %s" % [DOT, pinned_version]
+			elif local_version == pinned_version:
+				middle_text += " %s %s" %[DOT, local_version]
+			#elif local_version != pinned_version:
+				#middle_text += "%s Target: %s" %[DOT, pinned_version]
+			
+		elif kind == "clone":
+			top_text += " %s Cloned (%s)" % [DOT, tag]
+		elif kind == "submodule":
+			top_text += " %s Submodule (%s)" % [DOT, tag]
+		
+		top_label.text = top_text
+		middle_label.visible = middle_text != ""
+		middle_label.text = middle_text
 		
 		var update_status = data.get("update")
 		var missing_deps = data.get("missing_deps")
@@ -347,8 +402,6 @@ class AddonListItem extends PanelContainer:
 		tooltip_text = addon_path
 		
 	
-	func set_addon_name(new_name:String):
-		addon_label.text = new_name
 	
 	func set_status(statuses:Array):
 		var status = ", ".join(statuses)
@@ -536,8 +589,6 @@ class Utils:
 				
 				var exec:String = "gnome-terminal"
 				var args:Array = ["--", "bash", "-c", command_string]
-				# Note: If the user doesn't have gnome-terminal, you might need to try 
-				# "xterm", "konsole", or Debian's generic "x-terminal-emulator".
 				OS.create_process(exec, args)
 			
 			OSType.MAC:
