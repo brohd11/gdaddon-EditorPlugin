@@ -2,6 +2,8 @@
 
 This is a GDScript wrapper for the gdaddon addon manager.
 
+![dialog window](export_ignore/doc/gdaddon-editor-plugin.jpg)
+
 It provides:
  - Optional check for updates or missing depencies everytime you launch the editor.
  - Dialog window provides a quick look at the status of all plugins.
