@@ -8,7 +8,6 @@ const UOs = UtilRemote.UOs
 
 const DOT = "\u2022"
 const SETTING_CHECK_ON_START = &"plugin/gdaddon/check_on_start"
-const GDADDON_REPO = "https://github.com/brohd11/gdaddon"
 
 const OSType = UOs.OSType
 
@@ -29,7 +28,8 @@ func _get_plugin_icon() -> Texture2D:
 func _enter_tree() -> void:
 	add_tool_menu_item(PLUGIN_NAME, _open_gdaddon)
 	
-	await get_tree().create_timer(5).timeout
+	
+	await get_tree().create_timer(10).timeout
 	var task_threader = TaskThreader.new()
 	add_child(task_threader)
 	var addon_data = AddonData.new()
@@ -89,7 +89,6 @@ class GDAddonDialog extends ColorRect:
 	var content_vbox:VBoxContainer
 	
 	var launch_button:Button
-	var install_button:Button
 	var quick_status_label:Label
 	var refresh_button:Button
 	var waiting_label:Label
@@ -142,17 +141,8 @@ class GDAddonDialog extends ColorRect:
 		launch_button.icon = Utils.get_icon("Terminal")
 		#launch_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		launch_button.pressed.connect(_launch_gdaddon)
-		
-		install_button = Button.new()
-		content_vbox.add_child(install_button)
-		install_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		install_button.icon = Utils.get_icon("ExternalLink")
-		install_button.text = "Update gdaddon"
-		install_button.pressed.connect(_run_install)
-		#install_button.theme_type_variation = &"FlatButton"
-		install_button.hide()
-		
-		
+
+
 		var quick_status_hbox:= HBoxContainer.new()
 		content_vbox.add_child(quick_status_hbox)
 		quick_status_hbox.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -211,23 +201,6 @@ class GDAddonDialog extends ColorRect:
 	func _launch_gdaddon():
 		await UOs.launch_term(Utils.get_executable())
 	
-	func _run_install():
-		var http = HTTPRequest.new()
-		add_child(http)
-		install_button.disabled = true
-		waiting_label.show()
-		task_threader.start_ticker()
-		
-		var install_call:Callable = await Utils.start_gdaddon_install(http)
-		
-		task_threader.stop_ticker()
-		waiting_label.hide()
-		install_button.disabled = false
-		http.queue_free()
-		
-		if install_call.is_valid():
-			install_call.call()
-	
 	func refresh():
 		if refreshing:
 			print("Refreshing..")
@@ -236,8 +209,6 @@ class GDAddonDialog extends ColorRect:
 		waiting_label.show()
 		quick_status_label.text = "Status: Loading"
 		clear_addon_list()
-		var bin_stat = await addon_data.check_gdaddon_update()
-		install_button.visible = bin_stat != AddonData.BinStatus.VALID
 		await build_addon_list()
 		waiting_label.hide()
 		refreshing = false
@@ -390,7 +361,7 @@ class AddonListItem extends PanelContainer:
 		middle_label.text = middle_text
 		
 		var update_status = data.get("update")
-		var missing_deps = data.get("missing_deps")
+		var missing_deps = data.get("missing_deps", [])
 		
 		var statuses = []
 		if update_status == "available":
@@ -427,25 +398,20 @@ class AddonListItem extends PanelContainer:
 
 
 class AddonData:
-	
-	enum BinStatus{
-		VALID,
-		UPDATE,
-		NONE,
-	}
-	
+
 	enum AlertType {
 		NONE,
 		UPDATE,
 		DEPENDENCY,
 		ALL,
 	}
-	
+
 	var read_success:bool=false
+	var bin_found:bool=true
 	var data:Array
-	
+
 	var task_threader:TaskThreader
-	
+
 	func get_addon_list() -> Variant:
 		var res = await task_threader.run_task(_fetch_addon_list_blocking)
 		read_success = res != null
@@ -457,14 +423,20 @@ class AddonData:
 
 	func _fetch_addon_list_blocking() -> Variant:
 		var exe_path = Utils.get_executable()
+		bin_found = exe_path != ""
+		if not bin_found:
+			print("Could not find the gdaddon binary on PATH or in ~/.gdaddon/bin")
+			return null
 		var output := []
-		var status := OS.execute(exe_path, ["--list", "--json", "--check-updates"], output)
+		var status := OS.execute(exe_path, ["list", "--json", "--updates"], output)
 		if status != 0:
 			print("Could not get addon status - Exit Code: %d" % status)
 			return null
 		return JSON.parse_string(output[0])
-	
+
 	func all_valid_string():
+		if not bin_found:
+			return "Status: gdaddon not found"
 		if not read_success:
 			return "Status: Error"
 		var val = all_valid()
@@ -494,53 +466,10 @@ class AddonData:
 		elif has_update:
 			return AlertType.UPDATE
 		return AlertType.NONE
-	
-	func check_gdaddon_update() -> BinStatus:
-		var exe = Utils.get_executable()
-		if exe == "":
-			return BinStatus.NONE
-		var available = await _check_gdaddon_update()
-		if available:
-			return BinStatus.UPDATE
-		return BinStatus.VALID
-		
-	
-	func _check_gdaddon_update():
-		var result = await task_threader.run_task(_fetch_gdaddon_update_blocking)
-		if result == null:
-			return false
-		return result.get("available", false)
-	
-	
-	func _fetch_gdaddon_update_blocking() -> Variant:
-		var exe_path = Utils.get_executable()
-		var output := []
-		var status := OS.execute(exe_path, ["self-update", "--json", "--check"], output)
-		if status != 0:
-			push_error("Could not get gdaddon version - Exit Code: %d" % status)
-			return null
-		return JSON.parse_string(output[0])
 
 
 class TaskThreader extends Node:
 	signal wait_tick(count:int)
-
-	var _ticking := false
-
-	func start_ticker() -> void:
-		if _ticking:
-			return
-		_ticking = true
-		var count := 0
-		while _ticking:
-			count += 1
-			if count == 160:
-				count = 0
-			wait_tick.emit(floori(count / 40.0))
-			await get_tree().process_frame
-
-	func stop_ticker() -> void:
-		_ticking = false
 
 	func run_task(task:Callable):
 		var thread := Thread.new()
@@ -588,99 +517,9 @@ class Utils:
 		var home_dir = UOs.get_home_dir()
 		var bin_name = "gdaddon"
 		if os == OSType.WINDOWS:
-			os += ".exe"
+			bin_name += ".exe"
 		var exec_path = home_dir.path_join(".gdaddon").path_join("bin").path_join(bin_name)
 		var home_exit = OS.execute(exec_path, ["--version"], out)
 		if home_exit == 0:
 			return exec_path
 		return ""
-	
-	# for gdaddon release @ github
-	static func _platform_asset_token() -> String:
-		match UOs.get_os():
-			OSType.MAC: return "darwin-arm64"
-			OSType.LINUX: return "linux-amd64"
-			OSType.WINDOWS: return "windows-amd64"
-			_: return ""
-	
-	# returns callable
-	static func start_gdaddon_install(http:HTTPRequest) -> Callable:
-		var token := _platform_asset_token()
-		if token == "":
-			push_error("gdaddon: unsupported platform")
-			return Callable()
-
-		var headers := PackedStringArray(["User-Agent: gdaddon-plugin"])
-		var api_url := GDADDON_REPO.replace("github.com", "api.github.com/repos") + "/releases/latest"
-		if http.request(api_url, headers) != OK:
-			push_error("gdaddon: could not start release lookup")
-			return Callable()
-		var res = await http.request_completed # [result, response_code, headers, body]
-		if res[1] != 200:
-			push_error("gdaddon: GitHub API returned HTTP %s" % res[1])
-			return Callable()
-
-		var data = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
-		var download_url := ""
-		var asset_name := ""
-		if data is Dictionary:
-			for a in data.get("assets", []):
-				var name := str(a.get("name", ""))
-				if name.contains(token):
-					download_url = str(a.get("browser_download_url", ""))
-					asset_name = name
-					break
-		
-		if download_url == "":
-			push_error("gdaddon: no release asset found for %s" % token)
-			return Callable()
-		
-		var tmp_da := DirAccess.create_temp("gdaddon", true)
-		if tmp_da == null:
-			push_error("gdaddon: could not create temp dir")
-			return Callable()
-		
-		var tmpdir := tmp_da.get_current_dir()
-		var zip_path := tmpdir.path_join(asset_name)
-		http.download_file = zip_path
-		if http.request(download_url, headers) != OK:
-			push_error("gdaddon: could not start download")
-			return Callable()
-		
-		res = await http.request_completed
-		if res[1] != 200:
-			push_error("gdaddon: download returned HTTP %s" % res[1])
-			return Callable()
-		
-		if not _extract_zip(zip_path, tmpdir):
-			push_error("gdaddon: could not extract %s" % zip_path)
-			return Callable()
-		
-		var os := UOs.get_os()
-		var bin_name := "gdaddon.exe" if os == OSType.WINDOWS else "gdaddon"
-		var bin_path := tmpdir.path_join(bin_name)
-		if not FileAccess.file_exists(bin_path):
-			push_error("gdaddon: binary missing from archive")
-			return Callable()
-		if os != OSType.WINDOWS:
-			OS.execute("chmod", ["+x", bin_path])
-
-		# return launch callable
-		var install_cmd := "%s install" % bin_name if os == OSType.WINDOWS else "./%s install" % bin_name
-		return UOs.launch_term.bind(install_cmd, tmpdir)
-
-	# extracts every entry of a zip into dest_dir (flat - base names only)
-	static func _extract_zip(zip_path:String, dest_dir:String) -> bool:
-		var reader := ZIPReader.new()
-		if reader.open(zip_path) != OK:
-			return false
-		for fname in reader.get_files():
-			var out_path := dest_dir.path_join(fname.get_file())
-			var f := FileAccess.open(out_path, FileAccess.WRITE)
-			if f == null:
-				reader.close()
-				return false
-			f.store_buffer(reader.read_file(fname))
-			f.close()
-		reader.close()
-		return true
