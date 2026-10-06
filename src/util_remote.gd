@@ -1,4 +1,4 @@
 #! remote
 
-const Colors = preload("uid://bhb1vgeh8ibjq") #! resolve ALibEditor.Colors
-const UOs = preload("uid://cnuejrhrodgbx") #! resolve ALibRuntime.Utils.UOs
+const Colors = preload("uid://cpw0fsrs38esk") #! resolve UtilE.Colors
+const UOs = preload("uid://dppsxjnth11uc") #! resolve UtilR.UOs
