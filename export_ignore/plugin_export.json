@@ -58,6 +58,6 @@
 		}
 	},
 	"plugin_folder": "Gdaddon{{version=gdaddon}}",
-	"post_script": "res://addons/gdaddon/export_ignore/pre_post_export.gd",
-	"pre_script": "res://addons/gdaddon/export_ignore/pre_post_export.gd"
+	"post_script": "",
+	"pre_script": ""
 }
