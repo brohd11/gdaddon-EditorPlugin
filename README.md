@@ -1,16 +1,13 @@
 # gdaddon - Godot EditorPlugin
 
-This is a GDScript wrapper for the gdaddon addon manager.
+Checks for addon updates and missing dependencies using the gdaddon package manager.
 
-![dialog window](export_ignore/doc/gdaddon-editor-plugin.jpg)
+When enabled, the plugin waits 10 seconds after editor startup, then runs
+`gdaddon list --json --updates` in a background thread. Updates or missing dependencies
+give a notification.
 
-It provides:
- - Optional check for updates or missing depencies everytime you launch the editor.
- - Dialog window provides a quick look at the status of all plugins.
- - Launch gdaddon from the editor.
- - Quick navigation to each plugin. (terminal, native file system, godot file system)
-
-This is intended as an easier launcher and doesn’t have access to all of the features of gdaddon.
+Each project checks once every 24 hours (including failed check).
+Timestamp is stored in `res://.godot/addons/gdaddon/last_check`, local to the project.
 
 ## Requires the gdaddon binary
 
@@ -24,9 +21,3 @@ curl -fsSL https://raw.githubusercontent.com/brohd11/gdaddon/main/install.sh | s
 # or the no-PATH location this plugin falls back to
 BIN_DIR="$HOME/.gdaddon/bin" curl -fsSL https://raw.githubusercontent.com/brohd11/gdaddon/main/install.sh | sh
 ```
-
-Keep it current with `gdaddon update`. If the dialog reads `Status: gdaddon not found`,
-neither location has a working binary.
-
-This version needs a gdaddon with the subcommand CLI (`gdaddon list --json`); it won't
-work with older binaries that used `gdaddon --list --json`.
