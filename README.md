@@ -33,10 +33,16 @@ echo "Added $check_cmd to $gdrc"
 
 There are a couple more functions in the plugin script that are callable from the console.
 ```sh
-GDAddonPlugin call install # adds 'check.gd' to ~/.gdaddon/editor_plugin/check.gd
+GDAddonPlugin call install # copies check.gd and plugin.cfg to ~/.gdaddon/editor_plugin/
+GDAddonPlugin call check_install # show the installed checker version
 GDAddonPlugin call run_check # run a verbose check
 GDAddonPlugin call reset_check # reset the 24 hour timestamp
 ```
+
+`plugin.cfg` records the version of the installed checker. Running `install` again
+overwrites both files. When the project plugin starts, it prints a notice only if
+its version is newer than the installed checker, suggesting that you run `install`.
+The standalone checker does not perform this version comparison or reinstall itself.
 
 These are the commands returned by `GDAddonPlugin call install` and added to `~/.gdrc`.
 
