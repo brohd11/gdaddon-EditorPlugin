@@ -1,6 +1,6 @@
 extends RefCounted
 
-const Check = preload("res://addons/gdaddon/plugin.gd").Check
+const Check = preload("res://addons/gdaddon/src/check.gd")
 
 
 static func run_tests() -> Dictionary:
@@ -51,8 +51,58 @@ static func run_tests() -> Dictionary:
 		failures += _expect(output, Check.parse_status([raw], 0).has("error"), "Reject malformed status: %s" % raw)
 	failures += _expect(output, Check.parse_status([], 0).has("error"), "Empty process output is diagnosed")
 	failures += _expect(output, Check.parse_status(["[]"], 7).has("error"), "Nonzero exit is diagnosed even with valid JSON")
+	failures += _test_details(output)
 	output.append("gdaddon startup check: %d failures" % failures)
 	return {"result": failures, "output": output}
+
+
+static func _test_details(output:Array) -> int:
+	var failures = 0
+	var entries = [
+		{"name": "script_dock", "update": "available", "latest_tag": "v0.4.0", "missing_deps": [
+			{"repo_id": "github.com/me/absent", "tag": "v1.0.0", "state": "missing"},
+			{"repo_id": "github.com/me/uninstalled", "state": "not_installed"},
+		]},
+		{"name": "script_tabs", "update": "available", "latest_tag": "v0.5.0", "missing_deps": [
+			{"repo_id": "github.com/me/old", "tag": "v2.0.0", "local_tag": "v1.0.0", "state": "outdated"},
+		]},
+		{"name": "healthy", "update": "current", "missing_deps": []},
+		{"name": "locked", "update": "locked", "missing_deps": null},
+	]
+	var result = Check.parse_status([JSON.stringify(entries)], 0)
+	var expected = [
+		"gdaddon - script_dock: update available (v0.4.0)",
+		"gdaddon - script_dock: dependency github.com/me/absent missing from manifest (requires v1.0.0)",
+		"gdaddon - script_dock: dependency github.com/me/uninstalled not installed",
+		"gdaddon - script_tabs: update available (v0.5.0)",
+		"gdaddon - script_tabs: dependency github.com/me/old outdated (recorded v1.0.0, requires v2.0.0)",
+	]
+	failures += _expect(output, result.get("details") == expected, "Details list affected plugins, new versions, and all dependency states in source order")
+	failures += _expect(output, result.get("message") == "gdaddon - Update available and dependencies missing.", "Details keep the existing minimal summary")
+	entries = [
+		{"update": "available", "latest_tag": null},
+		{"display_name": "Display Name", "update": "available", "latest_tag": ""},
+		{"path": "addons/legacy", "missing_deps": [
+			{"url": "https://github.com/me/legacy", "tag": "v1.0.0"},
+			"legacy dependency",
+			{"repo_id": "github.com/me/old", "state": "outdated"},
+			null,
+		]},
+	]
+	result = Check.parse_status([JSON.stringify(entries)], 0)
+	expected = [
+		"gdaddon - unknown addon: update available (version unknown)",
+		"gdaddon - Display Name: update available (version unknown)",
+		"gdaddon - addons/legacy: dependency https://github.com/me/legacy missing (requires v1.0.0)",
+		"gdaddon - addons/legacy: dependency legacy dependency missing",
+		"gdaddon - addons/legacy: dependency github.com/me/old outdated (recorded version unknown)",
+		"gdaddon - addons/legacy: dependency unknown dependency missing",
+	]
+	failures += _expect(output, result.get("details") == expected, "Legacy entries and absent names, identities, or versions have readable fallbacks")
+	for healthy in [[], [{"name": "healthy", "update": "current", "missing_deps": []}]]:
+		result = Check.parse_status([JSON.stringify(healthy)], 0)
+		failures += _expect(output, result.get("message") == "" and result.get("details") == [], "Healthy results have no notification or detail lines")
+	return failures
 
 
 static func _write(path:String, text:String) -> void:

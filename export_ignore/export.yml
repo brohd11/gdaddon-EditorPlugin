@@ -9,7 +9,7 @@ options:
   ignore_src: false
   use_tag_in_cfg: true
   include_min_version: true
-  move_global_files: true
+  move_global_files: false
   include_docs: true
   include_project_license: false
   parser_settings:
@@ -25,7 +25,7 @@ options:
         aggressive: false
         debug_tags: false
         enabled: false
-      class_rename_ignore: []
+      class_rename_ignore: [GDAddonPlugin]
       backport_string_renames: {}
     parse_tscn: {}
     parse_tres: {}
